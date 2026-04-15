@@ -13,6 +13,7 @@ Generates ~5000 rows across HR, sales, marketing, finance, and operations domain
 
 from __future__ import annotations
 
+import json
 import os
 import random
 from datetime import date, datetime, timedelta
@@ -224,19 +225,17 @@ def seed(conn: psycopg2.extensions.connection) -> None:
             n_days = random.randint(2, 6)
             for _ in range(n_days):
                 work_date = _date_between("2025-10-01", "2026-03-31")
-                try:
-                    cur.execute(
-                        """INSERT INTO attendance (employee_id, work_date, hours_worked, is_overtime, note)
-                           VALUES (%s, %s, %s, %s, %s)""",
-                        (emp, work_date,
-                         round(random.uniform(4, 12), 2),
-                         random.random() > 0.85,
-                         random.choice([None, "加班完成项目", "周末值班", "远程办公"])),
-                    )
+                cur.execute(
+                    """INSERT INTO attendance (employee_id, work_date, hours_worked, is_overtime, note)
+                       VALUES (%s, %s, %s, %s, %s)
+                       ON CONFLICT (employee_id, work_date) DO NOTHING""",
+                    (emp, work_date,
+                     round(random.uniform(4, 12), 2),
+                     random.random() > 0.85,
+                     random.choice([None, "加班完成项目", "周末值班", "远程办公"])),
+                )
+                if cur.rowcount:
                     attendance_count += 1
-                except psycopg2.errors.UniqueViolation:
-                    conn.rollback()  # skip duplicate dates
-                    continue
 
         # ==================================================================
         # Customers (~100)
@@ -420,7 +419,7 @@ def seed(conn: psycopg2.extensions.connection) -> None:
                 row = cur.fetchone()
                 if not row:
                     continue
-                unit_price = row[0]
+                unit_price = float(row[0])
                 qty = random.randint(1, 20)
                 discount = round(random.uniform(0, 10), 2) if random.random() > 0.7 else 0
                 subtotal = round(unit_price * qty * (1 - discount / 100), 2)
@@ -637,7 +636,7 @@ def seed(conn: psycopg2.extensions.connection) -> None:
                     random.randint(1, 500),
                     action,
                     random.choice(emp_ids) if random.random() > 0.1 else None,
-                    {"reason": fake.sentence(nb_words=4)} if random.random() > 0.5 else None,
+                    json.dumps({"reason": fake.sentence(nb_words=4)}) if random.random() > 0.5 else None,
                     fake.date_time_between(start_date="-365d", end_date="now"),
                 ),
             )

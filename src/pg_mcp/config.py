@@ -1,5 +1,10 @@
+from pathlib import Path
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -34,7 +39,10 @@ class Settings(BaseSettings):
     # 日志
     pg_mcp_log_level: str = Field(default="INFO")
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": str(_ENV_FILE),
+        "env_file_encoding": "utf-8",
+    }
 
     @field_validator("pg_mcp_databases")
     @classmethod

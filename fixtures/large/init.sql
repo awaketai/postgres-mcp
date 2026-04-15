@@ -32,7 +32,7 @@ COMMENT ON TYPE contact_info IS '联系信息复合类型';
 
 CREATE TYPE money_type AS (
     amount   NUMERIC(14,2),
-    currency VARCHAR(3) DEFAULT 'CNY'
+    currency VARCHAR(3)
 );
 COMMENT ON TYPE money_type IS '金额复合类型';
 
@@ -277,7 +277,7 @@ COMMENT ON TABLE expenses IS '报销';
 
 CREATE TABLE budgets (
     id            SERIAL PRIMARY KEY,
-    department_id INT NOT NULL UNIQUE REFERENCES departments(id) ON DELETE CASCADE,
+    department_id INT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
     fiscal_year   INT NOT NULL,
     quarter       INT NOT NULL CHECK (quarter BETWEEN 1 AND 4),
     planned       money_type NOT NULL,
@@ -360,7 +360,7 @@ SELECT
     so.total_amount,
     so.discount_pct,
     so.created_at, so.confirmed_at, so.delivered_at, so.invoiced_at,
-    COALESCE(inv.status, 'none') AS invoice_status
+    COALESCE(inv.status, 'draft') AS invoice_status
 FROM sales_orders so
 LEFT JOIN customers c ON so.customer_id = c.id
 LEFT JOIN employees e ON so.assigned_to = e.id
@@ -380,7 +380,7 @@ SELECT
     COALESCE(AVG(soi.subtotal), 0) AS avg_order_value,
     MIN(so.created_at) AS first_order_date,
     MAX(so.created_at) AS last_order_date,
-    COALESCE(SUM(inv.amount.amount), 0) AS total_invoiced,
+    COALESCE(SUM((inv.amount).amount), 0) AS total_invoiced,
     COUNT(DISTINCT st.id) AS total_tickets
 FROM customers c
 LEFT JOIN employees e ON c.assigned_to = e.id
@@ -398,7 +398,7 @@ SELECT
     camp.start_date, camp.end_date,
     COUNT(DISTINCT l.id) AS leads_generated,
     COUNT(DISTINCT CASE WHEN l.status = 'won' THEN l.id END) AS leads_converted,
-    COALESCE(SUM(l.estimated_value.amount), 0) AS total_pipeline_value,
+    COALESCE(SUM((l.estimated_value).amount), 0) AS total_pipeline_value,
     COALESCE(COUNT(DISTINCT l.id)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN l.status = 'won' THEN l.id END), 0), 0) AS cost_per_conversion
 FROM campaigns camp
 LEFT JOIN leads l ON l.campaign_id = camp.id
@@ -412,8 +412,8 @@ SELECT
     b.planned,
     COALESCE(b.actual, ROW(0, 'CNY')::money_type) AS actual,
     CASE WHEN b.actual IS NOT NULL
-         THEN b.planned.amount - b.actual.amount
-         ELSE b.planned.amount
+         THEN (b.planned).amount - (b.actual).amount
+         ELSE (b.planned).amount
     END AS variance
 FROM budgets b
 JOIN departments d ON b.department_id = d.id
@@ -507,7 +507,7 @@ SELECT
     SUM(soi.quantity) AS units_sold,
     SUM(soi.subtotal) AS revenue,
     AVG(soi.subtotal) AS avg_order_value,
-    SUM(so.discount_pct * so.total_amount.amount / 100) AS total_discount
+    SUM(so.discount_pct * (so.total_amount).amount / 100) AS total_discount
 FROM sales_orders so
 JOIN sales_order_items soi ON soi.sales_order_id = so.id
 WHERE so.status NOT IN ('draft', 'cancelled')
@@ -520,15 +520,15 @@ SELECT
     b.fiscal_year, b.quarter,
     d.name AS department, d.type AS department_type,
     b.planned AS budget,
-    COALESCE(SUM(ex.amount.amount), 0) AS actual_expenses,
+    COALESCE(SUM((ex.amount).amount), 0) AS actual_expenses,
     COALESCE(SUM(e.salary), 0) AS payroll,
-    COALESCE(SUM(ex.amount.amount), 0) + COALESCE(SUM(e.salary), 0) AS total_cost
+    COALESCE(SUM((ex.amount).amount), 0) + COALESCE(SUM(e.salary), 0) AS total_cost
 FROM budgets b
 JOIN departments d ON b.department_id = d.id
 LEFT JOIN expenses ex ON ex.department_id = d.id
     AND EXTRACT(YEAR FROM ex.submitted_at) = b.fiscal_year
     AND EXTRACT(QUARTER FROM ex.submitted_at) = b.quarter
-    AND ex.status = 'approved'
+    AND ex.status = 'paid'
 LEFT JOIN employees e ON e.department_id = d.id AND e.status = 'active'
 GROUP BY b.fiscal_year, b.quarter, d.name, d.type, b.planned
 ORDER BY b.fiscal_year, b.quarter, d.name;
@@ -545,7 +545,7 @@ SELECT
     COUNT(CASE WHEN l.status = 'proposal' THEN 1 END) AS proposal_sent,
     COUNT(CASE WHEN l.status = 'won' THEN 1 END) AS won,
     COUNT(CASE WHEN l.status = 'lost' THEN 1 END) AS lost,
-    COALESCE(SUM(l.estimated_value.amount), 0) AS pipeline_value
+    COALESCE(SUM((l.estimated_value).amount), 0) AS pipeline_value
 FROM leads l
 GROUP BY DATE(l.created_at), l.source, l.priority
 ORDER BY date DESC;

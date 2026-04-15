@@ -27,6 +27,9 @@ htmlcov/
 # Schema cache
 schema_cache.json
 
+# Claude Code
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db

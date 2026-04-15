@@ -14,13 +14,13 @@
 # PostgreSQL connection (override via environment)
 PGHOST     ?= localhost
 PGPORT     ?= 5432
-PGUSER     ?= postgres
-PGPASSWORD ?=
+PGUSER     ?= root
+PGPASSWORD ?= admin123
 
 export PGPASSWORD
 
-PSQL      = psql -h $(PGHOST) -p $(PGPORT) -U $(PGUSER) -q
-PSQL_VARS = $(PSQL) -v ON_ERROR_STOP=1
+PSQL      = psql -h $(PGHOST) -p $(PGPORT) -U $(PGUSER) -d postgres -q
+PSQL_VARS = psql -h $(PGHOST) -p $(PGPORT) -U $(PGUSER) -v ON_ERROR_STOP=1
 
 SMALL_DB  = pg_mcp_test_small
 MEDIUM_DB = pg_mcp_test_medium
