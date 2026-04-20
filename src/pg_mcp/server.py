@@ -1,10 +1,11 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 import structlog
 from openai import AsyncOpenAI
 
 from fastmcp import FastMCP
-from fastmcp.server.middleware import Middleware, MiddlewareContext
 
 from pg_mcp.config import Settings
 from pg_mcp.db.inspector import SchemaInspector
@@ -19,32 +20,34 @@ from pg_mcp.sql.pipeline import SQLPipeline
 
 logger = structlog.get_logger(__name__)
 
+_pool_manager: PoolManager | None = None
+_cache: SchemaCache | None = None
+_pipeline: SQLPipeline | None = None
+_settings: Settings | None = None
+
+
+@asynccontextmanager
+async def _lifespan(server: FastMCP) -> AsyncIterator[None]:
+    await _startup()
+    try:
+        yield
+    finally:
+        await _shutdown()
+
+
 mcp = FastMCP(
     name="pg-mcp",
     instructions="PostgreSQL query service. Use natural language to query databases.",
     version="0.1.0",
+    lifespan=_lifespan,
 )
-
-_pool_manager: PoolManager | None = None
-_cache: SchemaCache | None = None
-_pipeline: SQLPipeline | None = None
-
-
-class LifecycleMiddleware(Middleware):
-    async def on_initialize(self, context: MiddlewareContext, call_next):
-        await _startup()
-        result = await call_next(context)
-        await _shutdown()
-        return result
-
-
-mcp.add_middleware(LifecycleMiddleware())
 
 
 async def _startup() -> None:
-    global _pool_manager, _cache, _pipeline
+    global _pool_manager, _cache, _pipeline, _settings
 
     settings = Settings()  # type: ignore[call-arg]
+    _settings = settings
     setup_logging(settings.pg_mcp_log_level)
 
     # Initialize connection pools
@@ -149,11 +152,13 @@ async def query(
 ) -> dict:
     """Query PostgreSQL database using natural language."""
     pipeline = _get_pipeline()
+    configured_max = _settings.pg_mcp_max_rows if _settings else 100
+    clamped_rows = max(1, min(max_rows, configured_max))
     response = await pipeline.run(
         question=question,
         database=database,
         return_sql=return_sql,
-        max_rows=max_rows,
+        max_rows=clamped_rows,
     )
     return response.model_dump(exclude_none=True)
 

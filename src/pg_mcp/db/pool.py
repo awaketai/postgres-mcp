@@ -20,7 +20,7 @@ class PoolManager:
 
     async def initialize(self, dsn_list: list[str]) -> None:
         for dsn in dsn_list:
-            name = _extract_db_name(dsn)
+            name = _resolve_unique_name(dsn, self._pools)
             try:
                 pool = await create_pool(
                     dsn,
@@ -48,6 +48,8 @@ class PoolManager:
 
     @property
     def default_database(self) -> str:
+        if not self._pools:
+            raise RuntimeError("No databases available — all connections failed")
         return next(iter(self._pools))
 
 
@@ -55,3 +57,26 @@ def _extract_db_name(dsn: str) -> str:
     # postgresql://user:pass@host:port/dbname?params
     path = dsn.split("/")[-1]
     return path.split("?")[0].strip()
+
+
+def _extract_host(dsn: str) -> str:
+    try:
+        after_scheme = dsn.split("@", 1)[1]
+        host_port = after_scheme.split("/", 1)[0]
+        return host_port.split(":")[0]
+    except (IndexError, ValueError):
+        return "unknown"
+
+
+def _resolve_unique_name(dsn: str, existing: dict[str, DatabasePool]) -> str:
+    name = _extract_db_name(dsn)
+    if name not in existing:
+        return name
+    host = _extract_host(dsn)
+    qualified = f"{name}@{host}"
+    if qualified not in existing:
+        return qualified
+    counter = 2
+    while f"{qualified}_{counter}" in existing:
+        counter += 1
+    return f"{qualified}_{counter}"

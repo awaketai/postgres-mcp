@@ -188,13 +188,47 @@ class SchemaInspector:
 
 
 def _parse_index_columns(index_def: str) -> list[str]:
-    """Extract column names from pg_get_indexdef output.
+    """Extract column expressions from pg_get_indexdef output.
 
-    Example input: CREATE INDEX idx_name ON schema.tbl USING btree (col1, col2)
+    Handles expression indexes, sort directions, and nested parentheses.
+    Example: CREATE INDEX idx ON tbl USING btree (lower(name), created_at DESC)
     """
-    paren_start = index_def.rfind("(")
+    paren_start = index_def.find("(", index_def.find("USING") if "USING" in index_def else 0)
+    if paren_start == -1:
+        paren_start = index_def.find("(")
     paren_end = index_def.rfind(")")
     if paren_start == -1 or paren_end == -1:
         return []
     inner = index_def[paren_start + 1 : paren_end]
-    return [col.strip().strip('"') for col in inner.split(",")]
+
+    # Handle WHERE clause in partial indexes
+    where_pos = inner.upper().find(" WHERE ")
+    if where_pos != -1:
+        inner = inner[:where_pos]
+
+    # Split on commas that are not inside parentheses
+    columns: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in inner:
+        if ch == "(":
+            depth += 1
+            current.append(ch)
+        elif ch == ")":
+            depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            columns.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        columns.append("".join(current).strip())
+
+    return [_strip_identifier_quotes(col) for col in columns if col]
+
+
+def _strip_identifier_quotes(col: str) -> str:
+    if col.startswith('"') and col.endswith('"') and "(" not in col:
+        return col[1:-1]
+    return col
